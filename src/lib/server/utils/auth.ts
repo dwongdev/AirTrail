@@ -1,9 +1,10 @@
 import type { Cookies } from '@sveltejs/kit';
-import { sql } from 'kysely';
+import { sql, type Kysely, type Transaction } from 'kysely';
 import type { Lucia } from 'lucia';
 
 import { db } from '$lib/db';
-import { publicUserFields, type User } from '$lib/db/types';
+import type { DB } from '$lib/db/schema';
+import { publicUserFields } from '$lib/db/types';
 import { hashSha256 } from '$lib/server/utils/hash';
 import { generateString } from '$lib/server/utils/random';
 import type { Preferences } from '$lib/zod/user';
@@ -11,27 +12,50 @@ import type { Preferences } from '$lib/zod/user';
 const usernameEquals = (username: string) =>
   sql<boolean>`lower("username") = lower(${username})` as any;
 
-export const createUser = async (
-  id: string,
-  username: string,
-  password: string,
-  displayName: string,
-  role: User['role'],
-  preferences?: Partial<Preferences>,
-) => {
-  const result = await db
+type DatabaseConnection = Kysely<DB> | Transaction<DB>;
+
+export const createUser = async ({
+  id,
+  username,
+  password,
+  displayName,
+  roleId,
+  preferences,
+  isOwner = false,
+  connection = db,
+}: {
+  id: string;
+  username: string;
+  password: string;
+  displayName: string;
+  roleId: string | null;
+  preferences?: Partial<Preferences>;
+  isOwner?: boolean;
+  connection?: DatabaseConnection;
+}) => {
+  const result = await connection
     .insertInto('user')
     .values({
       id,
       username,
       password,
       displayName,
-      role,
+      roleId,
+      isOwner,
       ...(preferences ?? {}),
     })
     .executeTakeFirst();
   return result.numInsertedOrUpdatedRows && result.numInsertedOrUpdatedRows > 0;
 };
+
+export const getDefaultRoleId = async () =>
+  (
+    await db
+      .selectFrom('authorizationSettings')
+      .select('defaultRoleId')
+      .where('id', '=', 1)
+      .executeTakeFirstOrThrow()
+  ).defaultRoleId;
 
 export const getUser = async (username: string) => {
   return db
@@ -96,8 +120,9 @@ export const deleteSession = async (lucia: Lucia, cookies: Cookies) => {
 export const usernameExists = async (
   username: string,
   excludeUserId?: string,
+  connection: Kysely<DB> | Transaction<DB> = db,
 ) => {
-  let query = db
+  let query = connection
     .selectFrom('user')
     .select(sql`1`.as('exists'))
     .where(usernameEquals(username));

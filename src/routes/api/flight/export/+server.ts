@@ -4,9 +4,18 @@ import {
   generateBackup,
   serializeBackup,
   type BackupFormat,
-  type BackupScope,
 } from '$lib/server/utils/backup';
-import { apiError, unauthorized, validateApiKey } from '$lib/server/utils/api';
+import {
+  parseFlightScopeSearchParams,
+  resolveFlightScope,
+} from '$lib/flight-scope';
+import { canExportFlights } from '$lib/server/authorization/flight';
+import {
+  apiError,
+  authenticateApiKey,
+  forbidden,
+  unauthorized,
+} from '$lib/server/utils/api';
 
 const contentTypes: Record<BackupFormat, string> = {
   json: 'application/json; charset=utf-8',
@@ -19,39 +28,33 @@ const parseFormat = (value: string | null): BackupFormat | null => {
   return null;
 };
 
-const parseScope = (value: string | null): BackupScope | null => {
-  if (!value || value === 'mine') return 'mine';
-  if (value === 'user' || value === 'all') return value;
-  return null;
-};
-
 export const GET: RequestHandler = async ({ request, url }) => {
-  const user = await validateApiKey(request);
-  if (!user) {
+  const authentication = await authenticateApiKey(request);
+  if (!authentication) {
     return unauthorized();
   }
+  const { user, authorization } = authentication;
 
   const format = parseFormat(url.searchParams.get('format'));
   if (!format) {
     return apiError('Invalid format', 400);
   }
 
-  const scope = parseScope(url.searchParams.get('scope'));
-  if (!scope) {
-    return apiError('Invalid scope', 400);
+  const parsedScope = parseFlightScopeSearchParams(url.searchParams);
+  if (!parsedScope.success) {
+    return apiError(
+      parsedScope.reason === 'missing_user'
+        ? 'A userId query parameter is required for user scope'
+        : 'Invalid scope',
+      400,
+    );
   }
 
-  if (user.role === 'user' && scope !== 'mine') {
-    return apiError('Forbidden', 403);
-  }
+  if (!canExportFlights(authorization, parsedScope.data)) return forbidden();
 
-  const userId =
-    scope === 'mine' ? user.id : url.searchParams.get('userId') || undefined;
-  if (scope === 'user' && !userId) {
-    return apiError('A userId query parameter is required for user scope', 400);
-  }
-
-  const backup = await generateBackup({ scope, userId });
+  const backup = await generateBackup(
+    resolveFlightScope(parsedScope.data, user.id),
+  );
   const filename = `airtrail.${format === 'yaml' ? 'yaml' : 'json'}`;
 
   return new Response(serializeBackup(backup, format), {

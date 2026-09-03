@@ -4,6 +4,17 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   : ColumnType<T, T | undefined, T>;
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
+export type access_role = {
+    id: string;
+    name: string;
+    description: string | null;
+    createdAt: Generated<Timestamp>;
+    updatedAt: Generated<Timestamp>;
+};
+export type access_role_permission = {
+    roleId: string;
+    permission: string;
+};
 export type aircraft = {
     id: Generated<number>;
     /**
@@ -52,6 +63,14 @@ export type api_key = {
 export type app_config = {
     id: Generated<number>;
     config: Generated<unknown>;
+};
+export type authorization_settings = {
+    id: Generated<number>;
+    defaultRoleId: string;
+    /**
+     * @kyselyType('off' | 'on_create' | 'on_login')
+     */
+    oauthRoleMappingMode: Generated<'off' | 'on_create' | 'on_login'>;
 };
 export type custom_field_definition = {
     id: Generated<number>;
@@ -181,6 +200,23 @@ export type oauth_link_token = {
     expiresAt: Timestamp;
     createdAt: Generated<Timestamp>;
 };
+export type oauth_role_mapping = {
+    id: Generated<number>;
+    priority: number;
+    name: Generated<string>;
+    enabled: Generated<boolean>;
+    /**
+     * @kyselyType('userinfo' | 'id_token')
+     */
+    claimSource: 'userinfo' | 'id_token';
+    claimPath: string;
+    /**
+     * @kyselyType('equals' | 'contains')
+     */
+    operator: 'equals' | 'contains';
+    claimValue: string;
+    roleId: string;
+};
 export type public_share = {
     id: Generated<number>;
     userId: string;
@@ -210,10 +246,12 @@ export type user = {
     username: string;
     displayName: string;
     password: string | null;
+    roleId: string | null;
+    isOwner: Generated<boolean>;
     /**
-     * @kyselyType('user' | 'admin' | 'owner')
+     * @kyselyType('local' | 'oauth')
      */
-    role: 'user' | 'admin' | 'owner';
+    roleAssignmentSource: Generated<'local' | 'oauth'>;
     oauthId: string | null;
     /**
      * @kyselyType('km' | 'mi' | 'nm')
@@ -262,17 +300,21 @@ export type visited_country = {
     userId: string;
 };
 export type DB = {
+    accessRole: access_role;
+    accessRolePermission: access_role_permission;
     aircraft: aircraft;
     airline: airline;
     airport: airport;
     apiKey: api_key;
     appConfig: app_config;
+    authorizationSettings: authorization_settings;
     customFieldDefinition: custom_field_definition;
     customFieldValue: custom_field_value;
     flight: flight;
     flightPassenger: flight_passenger;
     flightTrack: flight_track;
     oauthLinkToken: oauth_link_token;
+    oauthRoleMapping: oauth_role_mapping;
     publicShare: public_share;
     session: session;
     user: user;

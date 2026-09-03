@@ -24,8 +24,10 @@ model user {
   display_name String
   password     String?
 
-  /// @kyselyType('user' | 'admin' | 'owner')
-  role String
+  role_id                String?
+  is_owner               Boolean @default(false)
+  /// @kyselyType('local' | 'oauth')
+  role_assignment_source String  @default("local")
 
   oauth_id String? @unique
 
@@ -52,6 +54,56 @@ model user {
   api_keys          api_key[]
   public_share      public_share[]
   oauth_link_token  oauth_link_token?
+  access_role       access_role?          @relation(fields: [role_id], references: [id], onDelete: Restrict)
+}
+
+model access_role {
+  id          String   @id
+  name        String
+  description String?
+  created_at  DateTime @default(now()) @db.Timestamptz
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  users                 user[]
+  permissions           access_role_permission[]
+  authorization_setting authorization_settings?
+  oauth_mappings        oauth_role_mapping[]
+}
+
+model access_role_permission {
+  role_id    String
+  permission String
+
+  role access_role @relation(fields: [role_id], references: [id], onDelete: Cascade)
+
+  @@id([role_id, permission])
+}
+
+model authorization_settings {
+  id                      Int    @id @default(1)
+  default_role_id         String @unique
+  /// @kyselyType('off' | 'on_create' | 'on_login')
+  oauth_role_mapping_mode String @default("off")
+
+  default_role access_role @relation(fields: [default_role_id], references: [id], onDelete: Restrict)
+}
+
+model oauth_role_mapping {
+  id          Int    @id @default(autoincrement())
+  priority    Int
+  name        String @default("")
+  enabled     Boolean @default(true)
+  /// @kyselyType('userinfo' | 'id_token')
+  claim_source String
+  claim_path   String
+  /// @kyselyType('equals' | 'contains')
+  operator      String
+  claim_value   String
+  role_id       String
+
+  role access_role @relation(fields: [role_id], references: [id], onDelete: Restrict)
+
+  @@index([priority])
 }
 
 model oauth_link_token {
